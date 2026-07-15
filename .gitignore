@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Bot state (jangan di-commit - berisi session/dedupe lokal)
+*.json
+!package.json
+
+# Chrome profile / cookies (RAHASIA)
+hermes-chrome-profile*/
+Cookies
+Network/
+
+# Logs
+*.log
+watchdog_msg.txt
+test_channel_msg.txt
+
+# OS
+.DS_Store
+Thumbs.db
