@@ -6,6 +6,7 @@ venv/
 
 # Bot state (jangan di-commit - berisi session/dedupe lokal)
 *.json
+!*.example.json
 !package.json
 
 # Chrome profile / cookies (RAHASIA)
