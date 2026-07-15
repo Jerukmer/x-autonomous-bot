@@ -38,19 +38,25 @@ def session_ok():
         return False
 
 def kill_zombie_chrome():
-    """Kill chrome bot profil2 yg LEBAY (zombie). Biarkan 1 parent + child-nya.
-    Pakai PowerShell biar bisa filter CommandLine."""
+    """Kill Chrome bot profil2 kalau procs numpuk (>12 = ada yang gak close bersih).
+    Pakai taskkill langung ke PID yg CommandLine contain profil2."""
     try:
-        ps = r'''
-$bots = Get-WmiObject Win32_Process -Filter "name='chrome.exe'" | Where-Object { $_.CommandLine -match "hermes-chrome-profile2" }
-if ($bots.Count -gt 6) {
-    # terlalu banyak -> bunuh semua, biarkan watchdog nyalain 1 baru
-    foreach ($p in $bots) { try { $p.Terminate() | Out-Null } catch {} }
-    Write-Host "ZOMBIE_KILLED $($bots.Count)"
-}
-'''
-        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
-                       timeout=30, capture_output=True)
+        out = subprocess.check_output(
+            'wmic process where "name=\'chrome.exe\'" get ProcessId,CommandLine /value',
+            shell=True, timeout=20).decode("utf-8", "ignore")
+        pids = []
+        for block in out.split("\n\n"):
+            if "hermes-chrome-profile2" in block:
+                for line in block.split("\n"):
+                    if line.strip().startswith("ProcessId="):
+                        pids.append(line.strip().split("=")[1])
+        if len(pids) > 12:
+            # kill SEMUA, biarkan restart bikin 1 bersih
+            for pid in pids:
+                try: subprocess.run(f"taskkill /PID {pid} /F", shell=True, timeout=10,
+                                     capture_output=True)
+                except: pass
+            print(f"[wd] ZOMBIE_KILLED {len(pids)}", flush=True)
     except:
         pass
 

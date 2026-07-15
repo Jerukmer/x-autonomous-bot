@@ -29,7 +29,8 @@ def main():
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(CDP)
         ctx = b.contexts[0]
-        pg = ctx.new_page()
+        # REUSE page yg ada (jgn new_page tiap run -> renderer numpuk)
+        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:
             pg.goto("https://x.com/home", wait_until="domcontentloaded", timeout=25000)
             time.sleep(5)
@@ -40,7 +41,10 @@ def main():
                 time.sleep(1.5)
             arts = pg.locator("article").all()
             # skip beberapa tweet pertama biar tiap run beda (round-robin)
-            arts = arts[skip: skip+10]
+            # tapi kalau arts dikit, jangan skip lebay
+            max_skip = max(0, len(arts) - 6)
+            sk = min(skip, max_skip) if max_skip > 0 else 0
+            arts = arts[sk: sk+10]
             cnt = 0
             for tw in arts:
                 if cnt >= 6:
@@ -72,7 +76,7 @@ def main():
             save_cursor((skip + 10) % 50)
             print(f"  home: {cnt} tweet (skip={skip})")
         finally:
-            pg.close()
+            pass  # JANGAN pg.close() -> page dipakai ulang (hemat renderer)
     json.dump(out, open(OUT, "w"), ensure_ascii=False, indent=2)
     print(f"EXTRACTED {len(out)} home tweets")
 

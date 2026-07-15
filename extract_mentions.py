@@ -16,7 +16,7 @@ def main():
         # CDP: nyambung Chrome bot (profil2, port 9223) yg SDH login.
         b = p.chromium.connect_over_cdp("http://localhost:9223")
         ctx = b.contexts[0] if b.contexts else b.new_context()
-        pg = ctx.new_page()
+        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:
             pg.goto(MENTIONS_URL, wait_until="domcontentloaded", timeout=30000)
             time.sleep(5)
@@ -62,7 +62,7 @@ def main():
                 out.append({"id": tid, "username": uname, "text": text})
             json.dump(out, open(OUT, "w"), ensure_ascii=False, indent=2)
         finally:
-            pg.close()  # JANGAN b.close()
+            pass  # JANGAN pg.close() -> reuse page (hemat renderer)
 
 if __name__ == "__main__":
     main()
