@@ -45,17 +45,7 @@ def p_config(name):
     return os.path.join(CONFIG, name)
 
 # path json state (dedupe)
-REPLIED = {
-    "mention":  p_state("penepian_replied.json"),
-    "priority": p_state("penepian_priority_replied.json"),
-    "fyp":      p_state("penepian_fyp_replied.json"),
-    "home":     p_state("penepian_home_replied.json"),
-}
-CURSOR = {
-    "priority": p_state("penepian_priority_cursor.json"),
-    "fyp":      p_state("penepian_fyp_cursor.json"),
-    "home":     p_state("penepian_home_cursor.json"),
-}
+REPLIED_FILE = p_state("replied.json")  # 1 file global anti-dobel antar pipeline
 CONFIG_FILES = {
     "priority": p_config("priority_accounts.json"),
     "fyp":      p_config("fyp_accounts.json"),

@@ -9,7 +9,7 @@ Pipeline:
   5. Lapor channel -1003321472507.
 
 Otak = persona.gen_reply (baca->analisa->reply selaras, Gen Z+typo+NO emoji) ->
-HASIL KELUARAN KONSISTEN dg reply_verified / reply_back / learn_timeline.
+HASIL KELUARAN KONSISTEN dg learn_timeline.
 """
 import os, sys, re, json, time, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
