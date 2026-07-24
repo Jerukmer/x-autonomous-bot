@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""persona.py v9 - Otak reply (GROK/Hermes) dengan ENFORCE "harga mati".
+"""persona.py v10 - Otak reply (GROK/Hermes) dengan ENFORCE "harga mati" ketat.
 
-Perubahan penting dari v8:
-- Grok WAJIB balik JSON: {"reply": "...", "skip": true/false}
-- Kalau skip / reply kosong -> bot TIDAK reply (harga mati dijalankan sbg mekanisme).
-- Grok error total -> SKIP (gak ada fallback generic yg dipaksa kirim).
-- Pre-filter hemat Grok: tweet sampah (terlalu pendek / translation note / entity-only)
-  gak usah panggil Grok.
+Perubahan v10 (dari v9):
+- Parse JSON robust: cari objek JSON valid pertama, tahan kurung dlm teks balasan.
+- System prompt diperketat: Grok wajib ringkas konteks -> balas selaras, LARANG
+  template kosong ("iya bgt", "serius lo", "lo tanya apa", dll).
+- Validasi pasca-Grok: kalau reply mengandung frasa generic/cringe -> PAKSA skip.
+- Pre-filter sampah tetap (hemat Grok call).
+- Grok error total -> SKIP (gak ada fallback generic dipaksa kirim).
 """
 import os
 import re
@@ -16,23 +17,33 @@ import subprocess
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SYSTEM_PROMPT = """Kamu adalah Ji, user X (Twitter) Gen Z Indonesia, santai, cerdas, kadang konyol.
-Tugas: balas tweet orang DENGAN pemahaman konteks yang benar.
+Tugas: balas tweet orang DENGAN pemahaman konteks yang BENAR-BENAR nyambung.
 
-ATURAN HARGA MATI:
-- BALAS HANYA kalau kamu BENAR-BENAR paham konteks tweet & bisa kasih balasan yang selaras, bukan template.
-- Kalau tweet spam, terlalu pendek tanpa konteks, cuma mention kosong, atau kamu ragu konteksnya -> WAJIB skip.
-- JANGAN pernah balas teks generic/cringe ("gw setuju sih", "serius lo?", dll) yang gak nyambung.
-- Bahasa IKUTI tweet asli (Indo -> Indo, English -> English).
-- Max 150 karakter. NO emoji. Typo alami (lo/gw/bgt/yg) tapi gak berlebihan.
+ATURAN HARGA MATI (wajib, gak boleh dilanggar):
+1. SEBELUM balas, di dalam dirimu RINGKAS dulu: tweet ini ngomongin apa, konteksnya apa.
+   Kalau lo gak bisa ringkas konteks dengan yakin -> WAJIB skip.
+2. BALAS cuma kalau lo paham & bisa kasih balasan yang selaras (nyambung topik, bukan basa-basi).
+3. LARANG KERAS balas pakai template kosong: "iya bgt", "serius lo", "lo tanya apa",
+   "gw setuju sih", "gw juga mikir gitu", "wkwk lucu juga", "menarik", "relate banget".
+   Itu cringe & gak nyambung -> mending SKIP.
+4. Bahasa IKUTI tweet asli (Indo->Indo, English->English).
+5. Max 150 karakter. NO emoji. Typo alami (lo/gw/bgt/yg) tapi gak berlebihan.
 
 OUTPUT WAJIB JSON saja, tanpa penjelasan:
-{"reply": "teks balasan", "skip": false}
-atau kalau kamu skip:
+{"reply": "teks balasan yg nyambung", "skip": false}
+atau kalau lo ragu / gak paham / cuma basa-basi:
 {"reply": "", "skip": true, "reason": "alasan singkat"}
 """
 
 PROVIDER = "xai-oauth"
 MODEL = "grok-4.3"
+
+# frasa generic/cringe yang dilarang (harga mati: skip kalau muncul)
+GENERIC_PHRASES = [
+    "iya bgt", "serius lo", "lo tanya apa", "gw setuju sih", "gw juga mikir gitu",
+    "wkwk lucu juga", "menarik", "relate banget", "gw ngerasain bgt", "bener juga ya",
+    "gw setuju", "hmm menarik", "gw penasaran juga", "ini relate", "gw juga",
+]
 
 # ---------- pre-filter (hemat Grok call) ----------
 def classify_tweet_type(text):
@@ -51,18 +62,30 @@ def pre_filter(text):
 
 # ---------- otak Grok ----------
 def _extract_json(out):
+    """Cari objek JSON valid pertama. Tahan kurung dlm teks balasan."""
     try:
         s = out.strip()
-        # buang markdown fence kalau ada
-        if "```" in s:
-            s = re.sub(r"```(?:json)?", "", s)
+        # buang markdown fence
+        s = re.sub(r"```(?:json)?", "", s)
+        # cari semua kandidat { ... } terpendek dulu (lebih aman dari kurung dlm teks)
+        candidates = re.findall(r"\{[^{}]*\}", s)
+        for c in candidates:
+            try:
+                return json.loads(c)
+            except Exception:
+                continue
+        # fallback: first { to last }
         start = s.find("{")
         end = s.rfind("}")
-        if start == -1 or end == -1:
-            return None
-        return json.loads(s[start:end + 1])
+        if start != -1 and end != -1:
+            return json.loads(s[start:end + 1])
     except Exception:
-        return None
+        pass
+    return None
+
+def _is_generic(reply):
+    r = reply.lower()
+    return any(p in r for p in GENERIC_PHRASES)
 
 def get_ai_reply(text):
     """Return (reply_text, skip_bool). skip=True -> jangan reply."""
@@ -79,6 +102,9 @@ def get_ai_reply(text):
         skip = bool(data.get("skip"))
         reply = (data.get("reply") or "").strip()
         if skip or not reply:
+            return ("", True)
+        # validasi harga mati: tolak frasa generic/cringe
+        if _is_generic(reply):
             return ("", True)
         # potong aman di batas kata
         if len(reply) > 150:
