@@ -1,26 +1,12 @@
-# Python
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# Bot state (dedupe lokal - jangan di-commit)
+# state (private: session, dedupe, learn)
 state/
-
-# Config akun Ji (privat - jangan di-commit, ada di config/ example aja)
-config/priority_accounts.json
-config/fyp_accounts.json
-
-# Chrome profile / cookies (RAHASIA)
-hermes-chrome-profile*/
-*.bak/
-
-# Logs
+__pycache__/
 *.log
-botx_msg.txt
-watchdog_msg.txt
-test_channel_msg.txt
+*.bak
+*.old
 
-# OS
-.DS_Store
-Thumbs.db
+# never commit session/cookies
+*.json
+!fyp_accounts.example.json
+!priority_accounts.example.json
+!package.json

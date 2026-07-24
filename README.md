@@ -1,103 +1,56 @@
-# X Autonomous Bot — @penepian
+# X Autonomous Bot (1 Orchestrator)
 
-Bot X (Twitter) autonomous untuk akun **@penepian**. Berjalan 24/7 di background
-dengan Chrome **VISIBLE** (Ji bisa lihat), login via browser profile persisten,
-dan melaporkan semua aktivitas ke channel Telegram.
+Bot X (Twitter) autonomous. 1 file orchestrator (`run_bot.py`) yang handle scan +
+like + reply verified + mention watcher + lapor + self-heal. Account-agnostic.
 
-Otak reply = **Hermes/grok** (LLM lokal di gateway, via `hermes chat`), bukan API X resmi.
-Akun X diakses via **Playwright + Chrome DevTools Protocol (CDP)** pada profile
-yang sudah login (`bot_profile4`).
-
-## Fitur
-
-| Pipeline | Jadwal | Fungsi |
-|----------|--------|--------|
-| **AI Agent (learn_timeline)** | tiap 2 mnt | Scan beranda + belajar tren + FYP + reply VERIFIED + MENTION watcher |
-| **Beranda Komen (reply_home)** | tiap 2 mnt | Komen beranda KURASI (score engagement + niche + FYP) |
-
-Persona reply = gaya Gen Z Indonesia (no emoji, pendek ~150 char, kontekstual,
-match bahasa asli tweet). Semua pipeline pakai 1 otak (`persona.gen_reply`)
-biar output konsisten.
+Otak reply = **Hermes/grok** via `hermes chat`. Persona = Ji (Gen Z, no emoji,
+skip kalau gak paham konteks = "harga mati").
 
 ## Arsitektur
 
 ```
-Chrome VISIBLE (profile bot_profile4, port 9223)
-      |  CDP connect_over_cdp("http://127.0.0.1:9223")  <- bot NYAMBUNG, gak buka instance baru
-      |                                                   (session X gak expire berulang)
+Chrome bot (profile TERPISAH, port 9242, VISIBLE)
+      |  connect_over_cdp("http://127.0.0.1:9242")  <- gak buka instance baru
       v
-learn_timeline.py  -- AI agent: scan + learn + FYP + reply verified + mention
-reply_home.py      -- komen beranda kurasi (reuse open_modal+type_and_send)
+run_bot.py  -- 1 cron: scan + like + reply verified + mention + lapor + self-heal
       |
 Laporan -> Telegram channel -1003321472507 thread 2197
 ```
 
-- 1 Chrome, 1 profile (`bot_profile4`), VISIBLE.
-- Dedupe: 1 file `state/replied.json` global (anti-dobel antar pipeline).
-- Lock file cegah 2 pipeline reply barengan (anti-race).
-- Tiap cron bebas buka tab sendiri, TAPI gak tutup tab cron lain.
+- 1 Chrome, 1 profil bot (terpisah dari Chrome Ji @ port 9223).
+- Dedupe by `status_id` (bukan text) -> gak dobel pas X re-render.
+- Lock file cegah 2 run reply barengan.
+- Kirim terbukti: clipboard paste + validasi, cek toast X "sent".
 
 ## Setup
 
-### 1. Prasyarat
-- Python 3.11+
-- Chrome (sudah terinstall)
-- `pip install playwright` lalu `playwright install chromium`
-- Akun X sudah login di profile `bot_profile4`
-
-### 2. Siapkan profile bot (sekali)
-```bat
-chrome.exe --user-data-dir="C:\Users\EMIS-07\bot_profile4" ^
-  --remote-debugging-port=9223 ^
-  --no-first-run --disable-dev-shm-usage ^
-  "https://x.com/home"
-```
-Login @penepian sekali. Cookies persist di disk. (Atau pakai `launch_bot_visible.py`.)
-
-### 3. Konfigurasi
-Edit `CDP`, `PROFILE2`, `CHROME` path di `bot_config.py` sesuai environment.
-
-Edit `priority_accounts.json` (akun yang diikuti) & `fyp_accounts.json`
-(akun besar) — lihat contoh `*.example.json` di folder ini.
-
-Set chat_id Telegram di `bot_config.TG` (`telegram:-1003321472507:2197`).
-
-### 4. Jalankan
-```bat
-python launch_bot_visible.py   # nyalain Chrome bot VISIBLE (cek port 9223 dulu)
-python learn_timeline.py       # test 1x
-python reply_home.py           # test 1x
-```
-
-### 5. Jadwalkan cron (Hermes Gateway)
-```bat
-hermes cron create --name "X AI Agent" --schedule "*/2 * * * *" ^
-  --prompt "JALANKAN python learn_timeline.py" --deliver telegram:-1003321472507:2197
-hermes cron create --name "X Beranda" --schedule "*/2 * * * *" ^
-  --prompt "JALANKAN python reply_home.py" --deliver telegram:-1003321472507:2197
-```
-
-## File
-
-| File | Fungsi |
-|------|--------|
-| `bot_config.py` | 1 config terpusat (CDP, profile, TG, lock, rate) |
-| `launch_bot_visible.py` | Chrome bot VISIBLE + port 9223 (cek port dulu) |
-| `learn_timeline.py` | AI agent: scan/learn/FYP/reply verified + mention watcher |
-| `reply_home.py` | Komen beranda kurasi (reuse open_modal+type_and_send) |
-| `persona.py` | Grok otak + filter + humanize (Gen Z, no emoji) |
+1. Prasyarat: Python 3.11+, Chrome, `pip install playwright`.
+2. Set akun (env, gak edit kode):
+   - `X_HANDLE` = handle akun bot (misal `penepian` atau akun baru)
+   - `X_PROFILE` = path profil bot (misal `C:\Users\EMIS-07\bot_profile5`)
+   - `X_CDP_PORT` = 9242 (jangan 9223)
+3. Nyalain Chrome bot:
+   ```
+   python launch_bot.py
+   ```
+   Lalu LOGIN manual 1x di window bot (X blokir login otomatis).
+4. Test:
+   ```
+   python run_bot.py
+   ```
+5. Pasang cron (Hermes):
+   ```
+   hermes cron create --name "X Bot" --schedule "*/2 * * * *" \
+     --prompt "JALANKAN python run_bot.py" --deliver telegram:-1003321472507:2197
+   ```
 
 ## Keamanan
 
-- **JANGAN** commit cookie / `Cookies` file / `*.json` berisi session.
-- Profile Chrome bot harus terpisah dari Chrome harian (aturan "never disturb").
-- Dedupe via `state/replied.json` (1 file global).
+- Profile bot TERPISAH dari Chrome Ji. Launcher gak pernah bunuh Chrome Ji.
+- Kalau session expired -> bot notif Ji login manual, lalu PAUSE (gak spin).
+- Kalau kena limit X -> bot pause (gak spam klik).
+- JANGAN commit cookie / session json.
 
 ## Disclaimer
 
-Tool ini untuk edukasi. Penggunaan otomatis X melanggar ToS X — risiko akun
-dibanned ditanggung pengguna. Gunakan dengan bijak (rate lambat, persona natural).
-
-## Lisensi
-
-MIT — bebas dipakai & dimodifikasi.
+Tool edukasi. Otomatisasi X melanggar ToS X - risiko akun dibanned ditanggung pengguna.
